@@ -91,7 +91,7 @@
             <input type="range" id="input-size" min="3" max="15" value="8" step="0.5" class="w-full cursor-pointer accent-blue-500">
         </div>
 
-        <div class="flex gap-2">
+        <div class="flex gap-2 mb-3">
             <button id="btn-start" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded transition-colors">
                 เริ่ม
             </button>
@@ -99,8 +99,15 @@
                 รีเซ็ต
             </button>
         </div>
-        <p class="text-xs text-slate-500 text-center mt-4 mt-2">
-            💡 ทริค: ดับเบิ้ลคลิกที่ตัวเลขเพื่อเรียกเมนูนี้กลับมา
+
+        <!-- ปุ่มซ่อนนาฬิกา -->
+        <button id="btn-hide" class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 px-4 rounded border border-slate-600 transition-colors flex items-center justify-center gap-2">
+            <span>🙈</span> ซ่อนนาฬิกา
+        </button>
+
+        <p class="text-xs text-slate-500 text-center mt-4">
+            💡 ทริค: ดับเบิ้ลคลิกที่ตัวเลขเพื่อเรียกเมนูนี้กลับมา<br>
+            (หรือดับเบิ้ลคลิกที่จอเพื่อเลิกซ่อน)
         </p>
     </div>
 
@@ -119,6 +126,9 @@
         const inputSize = document.getElementById('input-size');
         const btnStart = document.getElementById('btn-start');
         const btnReset = document.getElementById('btn-reset');
+        
+        // ปุ่มซ่อน
+        const btnHide = document.getElementById('btn-hide');
 
         // ฟังก์ชันแปลงวินาทีเป็นรูปแบบ MM:SS หรือ HH:MM:SS
         function formatTime(seconds) {
@@ -212,6 +222,23 @@
         btnStart.addEventListener('click', toggleTimer);
         btnReset.addEventListener('click', resetTimer);
 
+        // ระบบซ่อนนาฬิกา
+        btnHide.addEventListener('click', () => {
+            display.style.display = 'none';
+            settingsPanel.style.opacity = '0';
+            settingsPanel.style.pointerEvents = 'none';
+        });
+
+        // ระบบแสดงนาฬิกากลับมา
+        function unhideAll() {
+            if (display.style.display === 'none') {
+                display.style.display = '';
+                showSettings();
+            }
+        }
+
+        document.body.addEventListener('dblclick', unhideAll); // ดับเบิ้ลคลิกพื้นที่ว่างเพื่อเลิกซ่อนได้ด้วย
+
         // อัปเดตเมื่อมีการพิมพ์แก้เวลา
         inputMinutes.addEventListener('input', readInputs);
         inputSeconds.addEventListener('input', readInputs);
@@ -228,19 +255,22 @@
         });
 
         // Event สำหรับตัวหนังสือ (หยุดชั่วคราว หรือ เปิดตั้งค่า)
-        display.addEventListener('click', () => {
+        display.addEventListener('click', (e) => {
+            // ป้องกันไม่ให้การคลิกตัวหนังสือไปทริกเกอร์เหตุการณ์ซ้ำซ้อน
+            e.stopPropagation(); 
             if (totalSeconds > 0) {
                 toggleTimer();
             }
         });
 
-        display.addEventListener('dblclick', () => {
+        display.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
             showSettings();
             if (isRunning) toggleTimer(); // หยุดเวลาให้ด้วยเมื่อเปิดตั้งค่า
         });
 
         // ==========================================
-        // ระบบใหม่: อ่านค่าจาก URL Parameters
+        // ระบบอ่านค่าจาก URL Parameters
         // ==========================================
         const urlParams = new URLSearchParams(window.location.search);
         const urlM = urlParams.get('m');
