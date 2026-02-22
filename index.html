@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OBS Countdown Timer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+    <style>
+        /* ตั้งค่าพื้นหลังให้โปร่งใสสำหรับ OBS */
+        body {
+            background-color: transparent !important;
+            overflow: hidden; /* ป้องกันแถบเลื่อน */
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* สไตล์ของตัวเลขนาฬิกา */
+        #timer-display {
+            font-size: 8rem; /* ขนาดเริ่มต้น */
+            color: #ffffff; /* สีข้อความเริ่มต้น */
+            font-weight: 700;
+            text-align: center;
+            line-height: 1;
+            /* เพิ่มเงาให้ตัวหนังสืออ่านง่ายขึ้นเมื่อซ้อนทับภาพใน OBS */
+            text-shadow: 
+                0px 0px 10px rgba(0, 0, 0, 0.8),
+                0px 0px 20px rgba(0, 0, 0, 0.6),
+                2px 2px 5px rgba(0, 0, 0, 1);
+            user-select: none;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        #timer-display:active {
+            transform: scale(0.98);
+        }
+
+        /* กล่องการตั้งค่า */
+        #settings-panel {
+            background-color: rgba(15, 23, 42, 0.9); /* Slate 900 โปร่งแสง */
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* เอฟเฟกต์กระพริบเมื่อหมดเวลา */
+        .blink {
+            animation: blinker 1s linear infinite;
+            color: #ef4444 !important; /* สีแดงเมื่อหมดเวลา */
+        }
+        @keyframes blinker {
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ส่วนแสดงเวลา (จะโชว์ตลอด) -->
+    <div id="timer-display" title="ดับเบิ้ลคลิกเพื่อเปิดการตั้งค่า">00:00</div>
+
+    <!-- แผงควบคุม (จะซ่อนเมื่อเวลาเดิน) -->
+    <div id="settings-panel" class="absolute p-6 rounded-2xl shadow-2xl text-white w-80 z-10 transition-opacity duration-300">
+        <h2 class="text-xl font-bold mb-4 text-center border-b border-slate-700 pb-2">ตั้งค่าเวลา (OBS)</h2>
+        
+        <div class="flex gap-4 mb-4">
+            <div class="flex-1">
+                <label class="block text-sm text-slate-400 mb-1">นาที</label>
+                <input type="number" id="input-minutes" min="0" max="999" value="5" class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white text-center text-lg focus:outline-none focus:border-blue-500">
+            </div>
+            <div class="flex-1">
+                <label class="block text-sm text-slate-400 mb-1">วินาที</label>
+                <input type="number" id="input-seconds" min="0" max="59" value="0" class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white text-center text-lg focus:outline-none focus:border-blue-500">
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <label class="block text-sm text-slate-400 mb-1">สีตัวเลข</label>
+            <div class="flex items-center gap-2">
+                <input type="color" id="input-color" value="#ffffff" class="w-10 h-10 rounded cursor-pointer bg-slate-800 border border-slate-600 p-1">
+                <span class="text-sm text-slate-300">เลือกสีที่ต้องการ</span>
+            </div>
+        </div>
+
+        <div class="mb-6">
+            <label class="block text-sm text-slate-400 mb-1">ขนาดตัวอักษร (rem)</label>
+            <input type="range" id="input-size" min="3" max="15" value="8" step="0.5" class="w-full cursor-pointer accent-blue-500">
+        </div>
+
+        <div class="flex gap-2">
+            <button id="btn-start" class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded transition-colors">
+                เริ่ม
+            </button>
+            <button id="btn-reset" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded transition-colors">
+                รีเซ็ต
+            </button>
+        </div>
+        <p class="text-xs text-slate-500 text-center mt-4 mt-2">
+            💡 ทริค: ดับเบิ้ลคลิกที่ตัวเลขเพื่อเรียกเมนูนี้กลับมา
+        </p>
+    </div>
+
+    <script>
+        // ตัวแปรต่างๆ
+        let timerInterval;
+        let totalSeconds = 0;
+        let isRunning = false;
+
+        // Elements
+        const display = document.getElementById('timer-display');
+        const settingsPanel = document.getElementById('settings-panel');
+        const inputMinutes = document.getElementById('input-minutes');
+        const inputSeconds = document.getElementById('input-seconds');
+        const inputColor = document.getElementById('input-color');
+        const inputSize = document.getElementById('input-size');
+        const btnStart = document.getElementById('btn-start');
+        const btnReset = document.getElementById('btn-reset');
+
+        // ฟังก์ชันแปลงวินาทีเป็นรูปแบบ MM:SS หรือ HH:MM:SS
+        function formatTime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            
+            if (h > 0) {
+                return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            }
+            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        // อัปเดตหน้าจอ
+        function updateDisplay() {
+            display.textContent = formatTime(totalSeconds);
+            if (totalSeconds <= 0) {
+                display.classList.add('blink');
+            } else {
+                display.classList.remove('blink');
+                display.style.color = inputColor.value; // คืนค่าสีเดิมหากไม่ได้หมดเวลา
+            }
+        }
+
+        // อ่านค่าจาก Input ไปยังตัวแปร
+        function readInputs() {
+            const m = parseInt(inputMinutes.value) || 0;
+            const s = parseInt(inputSeconds.value) || 0;
+            totalSeconds = (m * 60) + s;
+            updateDisplay();
+        }
+
+        // เริ่ม/หยุด จับเวลา
+        function toggleTimer() {
+            if (isRunning) {
+                // หยุดชั่วคราว
+                clearInterval(timerInterval);
+                isRunning = false;
+                btnStart.textContent = "เริ่มทำต่อ";
+                btnStart.classList.replace('bg-red-600', 'bg-blue-600');
+                btnStart.classList.replace('hover:bg-red-500', 'hover:bg-blue-500');
+            } else {
+                // เริ่มจับเวลา
+                if (totalSeconds <= 0) readInputs();
+                if (totalSeconds <= 0) return; // ถ้าเวลายังเป็น 0 ไม่ต้องเริ่ม
+
+                // ซ่อนเมนูตั้งค่า
+                settingsPanel.style.opacity = '0';
+                settingsPanel.style.pointerEvents = 'none';
+                
+                display.classList.remove('blink');
+                display.style.color = inputColor.value;
+
+                isRunning = true;
+                btnStart.textContent = "หยุดชั่วคราว";
+                btnStart.classList.replace('bg-blue-600', 'bg-red-600');
+                btnStart.classList.replace('hover:bg-blue-500', 'hover:bg-red-500');
+
+                timerInterval = setInterval(() => {
+                    totalSeconds--;
+                    updateDisplay();
+                    if (totalSeconds <= 0) {
+                        clearInterval(timerInterval);
+                        isRunning = false;
+                        btnStart.textContent = "เริ่ม";
+                        btnStart.classList.replace('bg-red-600', 'bg-blue-600');
+                        btnStart.classList.replace('hover:bg-red-500', 'hover:bg-blue-500');
+                    }
+                }, 1000);
+            }
+        }
+
+        // รีเซ็ตเวลา
+        function resetTimer() {
+            clearInterval(timerInterval);
+            isRunning = false;
+            display.classList.remove('blink');
+            readInputs();
+            btnStart.textContent = "เริ่ม";
+            btnStart.classList.replace('bg-red-600', 'bg-blue-600');
+            btnStart.classList.replace('hover:bg-red-500', 'hover:bg-blue-500');
+        }
+
+        // โชว์เมนูตั้งค่ากลับมา
+        function showSettings() {
+            settingsPanel.style.opacity = '1';
+            settingsPanel.style.pointerEvents = 'auto';
+        }
+
+        // Event Listeners สำหรับปุ่ม
+        btnStart.addEventListener('click', toggleTimer);
+        btnReset.addEventListener('click', resetTimer);
+
+        // อัปเดตเมื่อมีการพิมพ์แก้เวลา
+        inputMinutes.addEventListener('input', readInputs);
+        inputSeconds.addEventListener('input', readInputs);
+
+        // อัปเดตสีและขนาดแบบ Real-time
+        inputColor.addEventListener('input', (e) => {
+            if(!display.classList.contains('blink')) {
+                display.style.color = e.target.value;
+            }
+        });
+        
+        inputSize.addEventListener('input', (e) => {
+            display.style.fontSize = `${e.target.value}rem`;
+        });
+
+        // Event สำหรับตัวหนังสือ (หยุดชั่วคราว หรือ เปิดตั้งค่า)
+        display.addEventListener('click', () => {
+            if (totalSeconds > 0) {
+                toggleTimer();
+            }
+        });
+
+        display.addEventListener('dblclick', () => {
+            showSettings();
+            if (isRunning) toggleTimer(); // หยุดเวลาให้ด้วยเมื่อเปิดตั้งค่า
+        });
+
+        // ==========================================
+        // ระบบใหม่: อ่านค่าจาก URL Parameters
+        // ==========================================
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlM = urlParams.get('m');
+        const urlS = urlParams.get('s');
+        const urlAuto = urlParams.get('auto');
+
+        // ถ้ามีการส่งค่า m หรือ s มาทาง URL ให้ตั้งค่าตามนั้น
+        if (urlM !== null) inputMinutes.value = urlM;
+        if (urlS !== null) inputSeconds.value = urlS;
+
+        // โหลดค่าเริ่มต้น
+        readInputs();
+        display.style.color = inputColor.value;
+        display.style.fontSize = `${inputSize.value}rem`;
+
+        // ถ้ามีคำสั่ง auto=1 ใน URL ให้เริ่มจับเวลาทันทีโดยซ่อนเมนู
+        if (urlAuto === '1' || urlAuto === 'true') {
+            toggleTimer();
+        }
+
+    </script>
+</body>
+</html>
