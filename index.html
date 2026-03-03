@@ -7,9 +7,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
     <style>
-        /* ตั้งค่าพื้นหลังให้โปร่งใสสำหรับ OBS */
+        /* ตั้งค่าพื้นหลัง */
         body {
-            background-color: transparent !important;
+            /* เริ่มต้นที่สีดำสนิท */
+            background-color: #000000 !important; 
             overflow: hidden; /* ป้องกันแถบเลื่อน */
             margin: 0;
             padding: 0;
@@ -18,6 +19,12 @@
             align-items: center;
             height: 100vh;
             font-family: 'JetBrains Mono', monospace;
+            transition: background-color 0.3s ease;
+        }
+        
+        /* คลาสสำหรับการทำให้พื้นหลังโปร่งใส (สำหรับใช้ใน OBS) */
+        body.is-transparent {
+             background-color: transparent !important;
         }
 
         /* สไตล์ของตัวเลขนาฬิกา */
@@ -51,6 +58,7 @@
         }
     </style>
 </head>
+<!-- เริ่มต้นด้วยพื้นหลังสีดำ -->
 <body>
 
     <!-- ส่วนแสดงเวลา (จะโชว์ตลอด) -->
@@ -87,6 +95,13 @@
             <button id="btn-reset" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-6 rounded transition-colors shadow-lg">
                 รีเซ็ต
             </button>
+            
+            <!-- ปุ่มสลับโหมดพื้นหลัง -->
+            <button id="btn-bg-mode" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 px-4 rounded border border-slate-600 transition-colors ml-2 shadow-lg" title="สลับพื้นหลัง ดำ/โปร่งใส">
+                <!-- เริ่มต้นด้วยไอคอนแสดงว่าตอนนี้เป็นโหมดสีดำ (ดวงจันทร์) และกดเพื่อเปลี่ยนเป็นโปร่งใส -->
+                <span id="bg-mode-icon">🌑</span>
+            </button>
+
             <button id="btn-hide" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 px-6 rounded border border-slate-600 transition-colors ml-2 shadow-lg" title="ซ่อนทุกอย่าง">
                 🙈 ซ่อนจอ
             </button>
@@ -98,6 +113,7 @@
         let timerInterval;
         let totalSeconds = 0;
         let isRunning = false;
+        let isTransparent = false; // สถานะเริ่มต้นคือไม่โปร่งใส (พื้นหลังดำ)
 
         // Elements
         const display = document.getElementById('timer-display');
@@ -109,6 +125,8 @@
         const btnStart = document.getElementById('btn-start');
         const btnReset = document.getElementById('btn-reset');
         const btnHide = document.getElementById('btn-hide');
+        const btnBgMode = document.getElementById('btn-bg-mode');
+        const bgModeIcon = document.getElementById('bg-mode-icon');
 
         // ฟังก์ชันแปลงวินาทีเป็นรูปแบบ MM:SS หรือ HH:MM:SS
         function formatTime(seconds) {
@@ -124,13 +142,14 @@
 
         // อัปเดตหน้าจอ
         function updateDisplay() {
-            display.textContent = formatTime(totalSeconds);
-            if (totalSeconds <= 0) {
-                display.classList.add('blink');
-            } else {
-                display.classList.remove('blink');
-                display.style.color = inputColor.value; // คืนค่าสีเดิมหากไม่ได้หมดเวลา
-            }
+            requestAnimationFrame(() => {
+                display.textContent = formatTime(totalSeconds);
+                if (totalSeconds <= 0 && isRunning === false) { 
+                   // แก้ให้ไม่กระพริบทันที แต่จะกระพริบตอนหมดเวลาขณะวิ่งอยู่ (จัดการใน setInterval)
+                } else {
+                    display.style.color = inputColor.value; 
+                }
+            });
         }
 
         // อ่านค่าจาก Input ไปยังตัวแปร
@@ -141,37 +160,58 @@
             updateDisplay();
         }
 
+        // อัปเดตสถานะของปุ่ม
+        function updateButtonsState() {
+            if (isRunning) {
+                btnStart.textContent = "หยุดชั่วคราว";
+                btnStart.classList.replace('bg-blue-600', 'bg-amber-500');
+                btnStart.classList.replace('hover:bg-blue-500', 'hover:bg-amber-400');
+                
+                inputMinutes.disabled = true;
+                inputSeconds.disabled = true;
+                inputMinutes.classList.add('opacity-50');
+                inputSeconds.classList.add('opacity-50');
+            } else {
+                btnStart.textContent = totalSeconds > 0 ? "เริ่ม" : "เริ่ม";
+                btnStart.classList.replace('bg-amber-500', 'bg-blue-600');
+                btnStart.classList.replace('hover:bg-amber-400', 'hover:bg-blue-500');
+                
+                inputMinutes.disabled = false;
+                inputSeconds.disabled = false;
+                inputMinutes.classList.remove('opacity-50');
+                inputSeconds.classList.remove('opacity-50');
+            }
+        }
+
         // เริ่ม/หยุด จับเวลา
         function toggleTimer() {
             if (isRunning) {
                 // หยุดชั่วคราว
                 clearInterval(timerInterval);
                 isRunning = false;
-                btnStart.textContent = "เริ่มทำต่อ";
-                btnStart.classList.replace('bg-red-600', 'bg-blue-600');
-                btnStart.classList.replace('hover:bg-red-500', 'hover:bg-blue-500');
+                display.classList.remove('blink');
+                updateButtonsState();
             } else {
                 // เริ่มจับเวลา
                 if (totalSeconds <= 0) readInputs();
-                if (totalSeconds <= 0) return; // ถ้าเวลายังเป็น 0 ไม่ต้องเริ่ม
-                
+                if (totalSeconds <= 0) return; 
+
                 display.classList.remove('blink');
                 display.style.color = inputColor.value;
-
                 isRunning = true;
-                btnStart.textContent = "หยุดชั่วคราว";
-                btnStart.classList.replace('bg-blue-600', 'bg-red-600');
-                btnStart.classList.replace('hover:bg-blue-500', 'hover:bg-red-500');
+                updateButtonsState();
 
                 timerInterval = setInterval(() => {
-                    totalSeconds--;
-                    updateDisplay();
+                    if (totalSeconds > 0) {
+                        totalSeconds--;
+                        updateDisplay();
+                    }
+                    
                     if (totalSeconds <= 0) {
                         clearInterval(timerInterval);
                         isRunning = false;
-                        btnStart.textContent = "เริ่ม";
-                        btnStart.classList.replace('bg-red-600', 'bg-blue-600');
-                        btnStart.classList.replace('hover:bg-red-500', 'hover:bg-blue-500');
+                        updateButtonsState();
+                        display.classList.add('blink'); // กระพริบเมื่อหมดเวลา
                     }
                 }, 1000);
             }
@@ -183,14 +223,27 @@
             isRunning = false;
             display.classList.remove('blink');
             readInputs();
-            btnStart.textContent = "เริ่ม";
-            btnStart.classList.replace('bg-red-600', 'bg-blue-600');
-            btnStart.classList.replace('hover:bg-red-500', 'hover:bg-blue-500');
+            updateButtonsState();
+        }
+
+        // สลับโหมดพื้นหลัง
+        function toggleBgMode() {
+            isTransparent = !isTransparent;
+            if (isTransparent) {
+                document.body.classList.add('is-transparent');
+                bgModeIcon.textContent = '☀️'; // ไอคอนสำหรับโหมดโปร่งใส/สว่าง
+                btnBgMode.title = "เปลี่ยนเป็นพื้นหลังสีดำ";
+            } else {
+                document.body.classList.remove('is-transparent');
+                bgModeIcon.textContent = '🌑'; // ไอคอนสำหรับโหมดสีดำ
+                btnBgMode.title = "เปลี่ยนเป็นพื้นหลังโปร่งใส";
+            }
         }
 
         // Event Listeners สำหรับปุ่ม
         btnStart.addEventListener('click', toggleTimer);
         btnReset.addEventListener('click', resetTimer);
+        btnBgMode.addEventListener('click', toggleBgMode);
 
         // ระบบซ่อนทุกอย่าง (กดแล้วหายวับไปเลย)
         btnHide.addEventListener('click', () => {
@@ -199,18 +252,25 @@
         });
 
         // ระบบเรียกทุกอย่างกลับมา (ด้วยการดับเบิ้ลคลิกจอ)
-        function unhideAll() {
+        function unhideAll(e) {
+            // ป้องกันการทริกเกอร์ซ้ำถ้ายุ่งกับ panel อยู่
+            if (e.target.closest('#settings-panel') && display.style.display !== 'none') {
+               return;
+            }
+            
             if (display.style.display === 'none' || settingsPanel.style.display === 'none') {
                 display.style.display = '';
-                settingsPanel.style.display = 'flex'; // แสดงกลับมาในรูปแบบ flex layout
+                settingsPanel.style.display = 'flex'; 
             }
         }
 
         document.body.addEventListener('dblclick', unhideAll);
 
         // อัปเดตเมื่อมีการพิมพ์แก้เวลา
-        inputMinutes.addEventListener('input', readInputs);
-        inputSeconds.addEventListener('input', readInputs);
+        inputMinutes.addEventListener('input', () => { if(!isRunning) readInputs(); });
+        inputSeconds.addEventListener('input', () => { if(!isRunning) readInputs(); });
+        inputMinutes.addEventListener('change', () => { if(!isRunning) readInputs(); });
+        inputSeconds.addEventListener('change', () => { if(!isRunning) readInputs(); });
 
         // อัปเดตสีและขนาดแบบ Real-time
         inputColor.addEventListener('input', (e) => {
@@ -226,13 +286,17 @@
         // Event สำหรับตัวหนังสือ (หยุดชั่วคราว)
         display.addEventListener('click', (e) => {
             e.stopPropagation(); 
-            if (totalSeconds > 0) {
+            if (totalSeconds > 0 || isRunning) {
                 toggleTimer();
             }
         });
 
         // ป้องกันไม่ให้การดับเบิ้ลคลิกตัวหนังสือไปกวนการทำงานอื่นๆ
         display.addEventListener('dblclick', (e) => {
+            e.stopPropagation();
+        });
+
+        settingsPanel.addEventListener('dblclick', (e) => {
             e.stopPropagation();
         });
 
@@ -243,19 +307,30 @@
         const urlM = urlParams.get('m');
         const urlS = urlParams.get('s');
         const urlAuto = urlParams.get('auto');
+        const urlBg = urlParams.get('bg'); // รับค่า bg จาก url
 
         // ถ้ามีการส่งค่า m หรือ s มาทาง URL ให้ตั้งค่าตามนั้น
         if (urlM !== null) inputMinutes.value = urlM;
         if (urlS !== null) inputSeconds.value = urlS;
 
+        // จัดการเรื่องโหมดพื้นหลังจาก URL
+        if (urlBg === 'transparent') {
+            toggleBgMode(); // เรียกใช้เพื่อให้สลับเป็นโปร่งใส
+        }
+
         // โหลดค่าเริ่มต้น
         readInputs();
         display.style.color = inputColor.value;
         display.style.fontSize = `${inputSize.value}rem`;
+        updateButtonsState();
 
         // ถ้ามีคำสั่ง auto=1 ใน URL ให้เริ่มจับเวลาทันที
         if (urlAuto === '1' || urlAuto === 'true') {
-            toggleTimer();
+            setTimeout(() => {
+                toggleTimer();
+                // ซ่อนเมนูถ้า auto เริ่ม
+                settingsPanel.style.display = 'none';
+            }, 100);
         }
 
     </script>
